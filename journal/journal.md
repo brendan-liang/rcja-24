@@ -29,4 +29,4 @@ We later discovered, using `os.listdir("../")` to find the parent folder and `os
 
 To fix this, we realised that we could read and write to the root directory, as files there were not reset in between script executions. From this, we developed a class to write/read JSON files for configuration.
 
-![Untitled](Robotics%20Journal%2018df3f47f479495d863a6d4a721dfdd0/Untitled%203.png)
+![Untitled](assets/Untitled%203.png)
