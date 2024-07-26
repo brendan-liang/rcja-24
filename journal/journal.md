@@ -13,13 +13,78 @@ The previous 2 terms of work were undocumented, as it consisted mostly of recrea
 
 We were able to focus in today on working on the code for Spike Prime. First, we reformatted the code we had to utilise classes for readability, and grouping functions together with devices. For example, we created a `Drivebase` class that was responsible for handling motor interactions, such as a `move(degrees)` function. 
 
-![Untitled](assets/Untitled.png)
+```py
+class Drivebase:
+    def __init__(self):
+        self.fL = port.C
+        self.fR = port.A
+        self.bR = port.D
+        self.bL = port.F
+        return
 
-![Untitled](assets/Untitled%201.png)
+    def move(self, deg:int, speed:int=1110):
+        deg += 45
+        rad = radians(deg)
+        sinMult = sin(rad)
+        cosMult = cos(rad)
+        intensityMult = 1/max(abs(sinMult), abs(cosMult))
+        sinMult = sinMult*intensityMult
+        cosMult = cosMult*intensityMult
+
+        if sinMult > 1:
+            sinMult = 1
+        if cosMult > 1:
+            cosMult = 1
+        if sinMult < -1:
+            sinMult = -1
+        if cosMult < -1:
+            cosMult = -1
+
+        sinMult = round(sinMult, 4)
+        cosMult = round(cosMult, 4)
+
+        motor.run(self.fL, int(speed*-1*sinMult))
+        motor.run(self.fR, int(speed*cosMult))
+        motor.run(self.bR, int(speed*sinMult))
+        motor.run(self.bL, int(speed*-1*cosMult))
+```
+```py
+class Sensors:
+    def __init__(self):
+        self.ir = port.E
+        self.usR = port.B
+        return
+
+    def getIR(self):
+        vals = color_sensor.rgbi(self.ir)
+        if not vals[0]:
+            return 0
+        ir = vals[2]
+        return ir if ir else 360
+```
 
 This makes the main code overall much easier to read.
 
-![Untitled](assets/Untitled%202.png)
+```py
+async def main():
+    drive = Drivebase()
+    sensors = Sensors()
+    fs = FileSystem()
+
+    while 1:
+        ir = sensors.getIR()
+        if ir:
+            drive.move(ir)
+        else:
+            # return to goal
+            drive.move(180)
+            # recentre
+        
+        runloop.sleep_ms(10)
+            
+
+runloop.run(main())
+```
 
 We also attempted to write and read config files, so that minor adjustments could be made more easily on the day of a competition. We attempted simply using `open("file.txt" ...)` and `read("file.txt")`, but we kept getting an error saying that the file did not exist when we attempted to read
 
@@ -29,4 +94,15 @@ We later discovered, using `os.listdir("../")` to find the parent folder and `os
 
 To fix this, we realised that we could read and write to the root directory, as files there were not reset in between script executions. From this, we developed a class to write/read JSON files for configuration.
 
-![Untitled](assets/Untitled%203.png)
+```py
+class FileSystem:
+    def __init__(self, path="../../config/wbot"):
+        self.path = path
+        return
+
+    def dump(self, path, obj):
+        json.dump(obj, self.path + path)
+
+    def load(self, path):
+        json.load(self.path + path)
+```
