@@ -1,6 +1,7 @@
 from hub import port, motion_sensor
 from app import display
 import color_sensor
+import distance_sensor
 import motor
 import runloop
 from math import sin, cos, radians
@@ -33,6 +34,10 @@ class Sensors:
         ir = vals[2]
         return ir if ir else 360
 
+    def getUS(self):
+        """Get Ultrasonic distance in millimetres"""
+        return distance_sensor.distance(self.usR)
+
 clamp = lambda low, x, high: max(low, min(x, high))
 class Drivebase:
     def __init__(self):
@@ -40,6 +45,7 @@ class Drivebase:
         self.fR = port.A
         self.bR = port.D
         self.bL = port.F
+        self.motors = [port.C, port.A, port.D, port.F]
         return
 
     def move(self, deg:int, speed:int=1110, yaw:int|None=None):
@@ -64,7 +70,7 @@ class Drivebase:
         if abs(yawAdjust) >= 0.025:
             motorSpeeds = [int(spd - yawAdjust*(speed/(2*yawAdjustMax))) for spd in motorSpeeds]
         # Apply movements
-        
+
         for i in range(4):
             motor.run(self.motors[i], motorSpeeds[i])
 async def main():
@@ -80,8 +86,8 @@ async def main():
             # return to goal
             drive.move(180)
             # recentre
-        
+
         runloop.sleep_ms(10)
-            
+
 
 runloop.run(main())
