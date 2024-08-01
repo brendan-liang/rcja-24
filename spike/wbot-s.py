@@ -1,4 +1,5 @@
 from hub import port, motion_sensor
+from app import display
 import color_sensor
 import motor
 import runloop
@@ -32,6 +33,7 @@ class Sensors:
         ir = vals[2]
         return ir if ir else 360
 
+clamp = lambda low, x, high: max(low, min(x, high))
 class Drivebase:
     def __init__(self):
         self.fL = port.C
@@ -40,32 +42,31 @@ class Drivebase:
         self.bL = port.F
         return
 
-    def move(self, deg:int, speed:int=1110):
+    def move(self, deg:int, speed:int=1110, yaw:int|None=None):
+        yaw = int(yaw/10) if yaw else int(motion_sensor.tilt_angles()[0]/10)
         deg += 45
         rad = radians(deg)
         sinMult = sin(rad)
         cosMult = cos(rad)
-        intensityMult = 1/max(abs(sinMult), abs(cosMult))
-        sinMult = sinMult*intensityMult
-        cosMult = cosMult*intensityMult
+        motorSpeeds = [-sinMult, cosMult, sinMult, -cosMult] # fL, fR, bR, bL
 
-        if sinMult > 1:
-            sinMult = 1
-        if cosMult > 1:
-            cosMult = 1
-        if sinMult < -1:
-            sinMult = -1
-        if cosMult < -1:
-            cosMult = -1
+        # Maximise efficiency
+        speedMult = speed/(max([abs(i) for i in motorSpeeds]))
+        motorSpeeds = [int(spd * speedMult) for spd in motorSpeeds]
+        # Add yaw adjustment (orientation correction)
 
-        sinMult = round(sinMult, 4)
-        cosMult = round(cosMult, 4)
+        yawAdjustDivisor = 200
+        yawAdjustMax = 0.3
+        yawAdjust = clamp(-yawAdjustMax, yaw/yawAdjustDivisor, yawAdjustMax)
+        display.text(str(yawAdjust))
+        # Maximise and apply yaw adjustment if bot is not facing forward
 
-        motor.run(self.fL, int(speed*-1*sinMult))
-        motor.run(self.fR, int(speed*cosMult))
-        motor.run(self.bR, int(speed*sinMult))
-        motor.run(self.bL, int(speed*-1*cosMult))
+        if abs(yawAdjust) >= 0.025:
+            motorSpeeds = [int(spd - yawAdjust*(speed/(2*yawAdjustMax))) for spd in motorSpeeds]
+        # Apply movements
         
+        for i in range(4):
+            motor.run(self.motors[i], motorSpeeds[i])
 async def main():
     drive = Drivebase()
     sensors = Sensors()
