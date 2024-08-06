@@ -87,7 +87,4 @@ async def main():
             drive.move(180)
             # recentre
 
-        runloop.sleep_ms(10)
-
-
 runloop.run(main())
