@@ -4,11 +4,20 @@ import color_sensor
 import distance_sensor
 import motor
 import runloop
-from math import sin, cos, radians
+from math import sin, cos, radians, copysign
 
 import os
 import json
 import time
+
+def within_angle(start, angle, end): # Only values from 0 to 360
+    angle = angle or 360
+    start = start or 360
+    end = end or 360
+    if start < end:
+        return start <= angle <= end
+    else:
+        return not (end < angle < start)
 
 class FileSystem:
     def __init__(self, path="../../config/wbot"):
@@ -22,17 +31,38 @@ class FileSystem:
         json.load(self.path + path)
 
 class Sensors:
-    def __init__(self):
-        self.ir = port.E
-        self.usR = port.B
+    def __init__(self, lenPrev:int = 6):
+        self.ir = port.D
+        self.usR = port.E
+        # Sensor smoothing (store previous values)
+        self.lenPrev = lenPrev
+        self.prevIRdirs = [0] * lenPrev
+        self.prevIRstrs = [0] * lenPrev
         return
+
+    def addToStack(self, val, stack:list, max_len:int|None=None):
+        max_len = max_len or self.lenPrev
+        stack.append(val)
+        if len(stack) > max_len:
+            stack.pop(0)
+        return stack
 
     def getIR(self):
         vals = color_sensor.rgbi(self.ir)
-        if not vals[0]:
-            return 0
-        ir = vals[2]
-        return ir if ir else 360
+
+        # # Sensor smoothing IR DIR
+        # self.prevIRdirs = self.addToStack(vals[2], self.prevIRdirs)
+        # irDir = sum(sorted(self.prevIRdirs)[4:6])//2
+        irDir = vals[2]
+
+        # Sensor smoothing IR STR
+        self.prevIRstrs = self.addToStack(vals[0], self.prevIRstrs)
+        irStr = sum(sorted(self.prevIRstrs)[4:6])//2
+
+        # Calculate return value
+        if not irStr:
+            return (0, 0)
+        return (irDir or 360, irStr)
 
     def getUS(self):
         """Get Ultrasonic distance in millimetres"""
@@ -41,11 +71,11 @@ class Sensors:
 clamp = lambda low, x, high: max(low, min(x, high))
 class Drivebase:
     def __init__(self):
-        self.fL = port.C
+        self.fL = port.B
         self.fR = port.A
-        self.bR = port.D
+        self.bR = port.C
         self.bL = port.F
-        self.motors = [port.C, port.A, port.D, port.F]
+        self.motors = [self.fL, self.fR, self.bR, self.bL]
         return
 
     def move(self, deg:int, speed:int=1110, yaw:int|None=None):
@@ -64,7 +94,6 @@ class Drivebase:
         yawAdjustDivisor = 200
         yawAdjustMax = 0.3
         yawAdjust = clamp(-yawAdjustMax, yaw/yawAdjustDivisor, yawAdjustMax)
-        display.text(str(yawAdjust))
         # Maximise and apply yaw adjustment if bot is not facing forward
 
         if abs(yawAdjust) >= 0.025:
@@ -79,12 +108,14 @@ async def main():
     fs = FileSystem()
 
     while 1:
-        ir = sensors.getIR()
-        if ir:
+        ir, irStr = sensors.getIR()
+        display.text(str(ir) + " " + str(irStr))
+        if not ir:
+            drive.move(180)
+        # elif 330 <= ir <= 360 or 0 < ir < 30:
+        elif within_angle(330, ir, 30):
             drive.move(ir)
         else:
-            # return to goal
-            drive.move(180)
-            # recentre
+            drive.move(int(ir + copysign(irStr, 180 - ir)))
 
 runloop.run(main())
