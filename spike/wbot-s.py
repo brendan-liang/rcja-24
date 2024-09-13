@@ -1,4 +1,4 @@
-from hub import port, motion_sensor
+from hub import port, motion_sensor, light_matrix
 from app import display
 import color_sensor
 import distance_sensor
@@ -102,9 +102,39 @@ class Drivebase:
 
         for i in range(4):
             motor.run(self.motors[i], motorSpeeds[i])
+
+class HubDisplay: # May add to?
+    clockDirImages = {
+        0: light_matrix.IMAGE_SQUARE_SMALL,
+        1: light_matrix.IMAGE_CLOCK5,
+        2: light_matrix.IMAGE_CLOCK7,
+        3: light_matrix.IMAGE_ARROW_SW,
+        4: light_matrix.IMAGE_CLOCK8,
+        5: light_matrix.IMAGE_CLOCK10,
+        6: light_matrix.IMAGE_ARROW_NW,
+        7: light_matrix.IMAGE_CLOCK11,
+        8: light_matrix.IMAGE_CLOCK1,
+        9: light_matrix.IMAGE_ARROW_NE,
+        10: light_matrix.IMAGE_CLOCK2,
+        11: light_matrix.IMAGE_CLOCK4,
+        12: light_matrix.IMAGE_ARROW_SE,
+    }
+
+    def pointDirection(self, dir: int):
+        clockDir = dir // 30
+        if dir:
+            light_matrix.show_image(eval("light_matrix.IMAGE_CLOCK" + str(clockDir)))
+        else:
+            light_matrix.show_image(light_matrix.IMAGE_SQUARE_SMALL)
+
+    def showChar(self, char: str):
+        light_matrix.write(char[0])
+
 async def main():
+    motion_sensor.reset_yaw(0)
     drive = Drivebase()
     sensors = Sensors()
+    hubdisp = HubDisplay()
     fs = FileSystem()
 
     while 1:
@@ -112,10 +142,15 @@ async def main():
         display.text(str(ir) + " " + str(irStr))
         if not ir:
             drive.move(180)
+            hubdisp.pointDirection(0)
         # elif 330 <= ir <= 360 or 0 < ir < 30:
         elif within_angle(330, ir, 30):
-            drive.move(ir)
+            drive.move(ir*2)
+            hubdisp.pointDirection(ir)
         else:
-            drive.move(int(ir + copysign(irStr, 180 - ir)))
+            direction = int(ir + copysign(irStr, 180 - ir)*0.3)
+            drive.move(direction)
+            hubdisp.pointDirection(direction)
+            #drive.move(int(ir + copysign(max(1.066**irStr - 0.28, 0), 180 - ir)*0.5))
 
 runloop.run(main())

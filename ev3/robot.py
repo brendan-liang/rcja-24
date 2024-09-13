@@ -10,14 +10,24 @@ from math import sin, cos, radians
 from json import load
 from time import sleep
 
-
-
 # == Functions ==
-def threshold(l, num):
+def threshold(l:int|float, num:int|float) -> bool:
     for i in l:
         if i >= num:
             return True
     return False
+
+def within_angle(start:int|float, angle:int|float, end:int|float) -> bool: # Only values from 0 to 360
+    angle = angle or 360
+    start = start or 360
+    end = end or 360
+    if start < end:
+        return start <= angle <= end
+    else:
+        return not (end < angle < start)
+    
+def clamp(low:int|float, n:int|float, high:int|float) -> int|float:
+    return min(high, max(low, n))
 # == Classes ==
 
 class Interface:
@@ -66,39 +76,33 @@ class DriveBase:
             if sum(1 for _ in list_motors()) != 4:
                 self.interface.err("Invalid number of motors: " + str(sum(1 for _ in list_motors())) + "/4")
         # Connect motors + create "movement queue"
-        self.motors = [MediumMotor(OUTPUT_A),MediumMotor(OUTPUT_B),MediumMotor(OUTPUT_C),MediumMotor(OUTPUT_D)]
+        self.motors = [MediumMotor(OUTPUT_D),MediumMotor(OUTPUT_A),MediumMotor(OUTPUT_B),MediumMotor(OUTPUT_C)]
         self.motorMoves = [[],[],[],[]]
         # Load config
         # with open("config.json", "r") as f:
         #     self.config = load(f).get("motors", [1, 1, 1, 1])
         self.config = [1, 1, 1, 1]
     
-    def move(self, deg:int, speed:int=100) -> None:
+    def move(self, deg:int, yaw:int=0, speed:int=100) -> None:
+        yaw = int(yaw/10)
         deg += 45
         rad = radians(deg)
         sinMult = sin(rad)
         cosMult = cos(rad)
-        intensityMult = 1/max(abs(sinMult), abs(cosMult))
-        sinMult = sinMult*intensityMult
-        cosMult = cosMult*intensityMult
+        motorSpeeds = [-sinMult, cosMult, sinMult, -cosMult] # fL, fR, bR, bL
 
-        if sinMult > 1:
-            sinMult = 1
-        if cosMult > 1:
-            cosMult = 1
-        if sinMult < -1:
-            sinMult = -1
-        if cosMult < -1:
-            cosMult = -1
+        yawAdjustDivisor = 150
+        yawAdjustMax = 0.5
+        yawAdjust = clamp(-yawAdjustMax, yaw/yawAdjustDivisor, yawAdjustMax)
+        if yawAdjust:
+            motorSpeeds = [spd - yawAdjust for spd in motorSpeeds]
 
-        sinMult = round(sinMult, 4)
-        cosMult = round(cosMult, 4)
+        speedMult = speed/(max([abs(i) for i in motorSpeeds]))
+        motorSpeeds = [int(spd * speedMult) for spd in motorSpeeds]
 
-        self.motorMoves[0].append(speed*-1*sinMult*self.config[0])
-        self.motorMoves[1].append(speed*-1*cosMult*self.config[1])
-        self.motorMoves[2].append(speed*sinMult*self.config[2])
-        self.motorMoves[3].append(speed*cosMult*self.config[3])
-
+        for i in range(4):
+            self.motorMoves[i].append(motorSpeeds[i])
+    
     def tickMotors(self) -> None:
         for i in range(4):
             self.motors[i].on_for_seconds(round(sum(self.motorMoves[i]) / len(self.motorMoves[i])), 1, block=False)
@@ -112,21 +116,26 @@ class SmoothSensor:
             "read": lambda x: x.distance_centimeters
         }
     }
-    def __init__(self, port:str, sensor:str, mode:str=None) -> None:
+    def __init__(self, port:str, sensor:str, mode:str=None, smooth_amount:int=5) -> None:
         if sensor in self.alt.keys():
             self.sensor = self.alt[sensor]["create"](port)
             return
         self.sensor = Sensor(port, driver_name=sensor)
         self.type = sensor
+        self.values = {}
+        self.smooth_amount = smooth_amount
         if mode:
             self.sensor.mode = mode
 
-    def read(self, value=0) -> None:
+    def read(self, value:int=0) -> None:
         if self.type in self.alt.keys():
-            return self.alt["us"]["read"](self.sensor)
-        return self.sensor.value(value)
-            
+            self.values.append(self.alt["us"]["read"](self.sensor))
 
+        if not self.values.get(value, None):
+            self.values[value] = [0] * self.smooth_amount
+        self.values[value].append(self.sensor.value(value))
+        self.values[value].pop(0)
+        return sorted(self.values[value])[int(self.smooth_amount/2)]
         
 class Sensors:
     '''Sensor collection'''
@@ -136,36 +145,35 @@ class Sensors:
             for sensor in args:
                 self.__setattr__(sensor[0], sensor[1])
                 return
-        self.irL = SmoothSensor(INPUT_1, "ht-nxt-ir-seek-v2", "AC-ALL")
-        self.irR = SmoothSensor(INPUT_2, "ht-nxt-ir-seek-v2", "AC-ALL")
+        self.irB = SmoothSensor(INPUT_1, "ht-nxt-ir-seek-v2", "AC-ALL")
+        self.irF = SmoothSensor(INPUT_2, "ht-nxt-ir-seek-v2", "AC-ALL")
+        self.compass = SmoothSensor(INPUT_3, "ht-nxt-compass")
         return
     
     def readIR(self):
-        vals = [self.irL.read(i) for i in range(1, 6)]
-        valsB = [self.irR.read(i) for i in range(1, 6)]
-        subsT = []
-        subsF = []
-        subsB = []
-
-        if not (threshold(vals, 3) or threshold(valsB, 3)):
-            return False
+        THRESH = 2
+        valL = (24*self.irB.read(0)-120)+180
+        valR = (24*self.irF.read(0)-120)
+        strL = self._irStr(self.irB)
+        strR = self._irStr(self.irF)
+        if strR < THRESH and strL < THRESH:
+            return 0
+        if strR > strL:
+            return valR % 360 or 360
+        else:
+            return valL % 360 or 360
         
-        if sum(vals):
-            subsF = [vals[i-1] * [][i - 1] for i in range(1, 6)]
-        if sum(valsB):
-            subsB = [valsB[i-1] * [84, 132, 180, -132, -84][i - 1] for i in range(1, 6)]
-        if len(subsF) and len(subsB):
-            subsT = [(subsF[0] + subsB[-1])/2, (subsF[-1] + subsB[0])/2]
-            subsF.pop()
-            subsF.pop(0)
-            subsB.pop()
-            subsB.pop(0)
+    def _irStr(self, sensor:SmoothSensor):
+        return sum((sensor.read(1),sensor.read(2),sensor.read(3),sensor.read(4),sensor.read(5)))
+    
+    def readIRStr(self) -> int:
+        return min(max((self._irStr(self.irF), self._irStr(self.irB))), 3000)
+        
+    def resetCompass(self) -> None:
+        self.compass.sensor.command = "BEGIN-CAL"
+        self.compass.sensor.command = "END-CAL"
 
-            subsT.extend(subsF)
-            subsT.extend(subsB)
-            
-            if sum(vals) + sum(valsB) and len(subsT) and len(vals) and len(valsB):
-                return (sum(subsT)/(sum(vals) + sum(valsB))) % 360
-            else:
-                return
-        return dir % 360 or 360
+        self.straight = self.compass.read()
+    
+    def readCompass(self) -> int:
+        return (self.compass.read() - self.straight) % 360
