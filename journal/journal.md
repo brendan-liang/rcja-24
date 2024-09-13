@@ -1,9 +1,5 @@
 # Robotics Journal
 
-# Previous Work
-
-![image.png](Robotics%20Journal%2018df3f47f479495d863a6d4a721dfdd0/image.png)
-
 ## Movement
 
 We came in with a function that we wrote last year for the EV3 platform, that, given a bot built with 4 omni wheels at 90 degrees to each other, would take an angle in degrees and calculate the strength each wheel would need to rotate at to move the bot in that direction. 
@@ -168,7 +164,7 @@ class FileSystem:
 
 ## Progress
 
-We focused on implementing an algorithm for the Spike Prime bot to reorientate itself when it was facing the wrong way, while not disrupting its movement. We achieved this through what we called “Yaw Adjustment”, where the inverse of the yaw rotation offset (basically just rotation parallel to the ground) was split among multiple iterations, and the rotation was added to the motor speeds, in order to slowly rotate to yaw=0 (facing forward). 
+We focused on implementing a method for the Spike Prime bot to reorientate itself when it was facing the wrong way, while not disrupting its movement. We achieved this through what we called “Yaw Adjustment”, where the inverse of the yaw rotation offset (basically just rotation parallel to the ground) was split among multiple iterations, and the rotation was added to the motor speeds, in order to slowly rotate to yaw=0 (facing forward). 
 
 Since the dividing calculation was done each iteration, it made it so that the amount it rotated would get gradually smaller at an exponential rate, which made the rotations larger if there was a large offset, and smaller if there was a small offset. 
 
@@ -200,3 +196,27 @@ Since the dividing calculation was done each iteration, it made it so that the a
 
 ```
 
+# We forgot to document weeks 4-8
+## Progress
+In that time, we:
+ - Cleaned up code
+ - Implemented yaw correction on EV3
+ - More accurate EV3
+ - Attempted to implement Ultrasonic sensors
+ - Added helpful direction display to Spike
+
+# Images
+
+Initial wheel layout for EV3 (Prototype from 2023)
+![Initial EV3 Prototype (2023)](./assets/EV31.jpg)
+Final EV3 designs (Designs from 2023)
+![Final EV3 Designs (2023)](./assets/EV32.jpg)
+EV3 states design (This year)
+![EV3 States Design (2024)](./assets/EV33.jpg)
+![EV3 States Design (2024)](./assets/EV34.jpg)
+Code testing on Spike Prime (This year)
+![Spike Prime Prototype (2024)](./assets/Spike1.jpg)
+Spike Prime states design
+![Spike Prime States Bottom (2024)](./assets/Spike2.jpg)
+![Spike Prime States Top (2024)](./assets/Spike3.jpg)
+![Spike Prime States Side (2024)](./assets/Spike4.jpg)

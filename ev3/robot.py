@@ -82,6 +82,32 @@ class DriveBase:
         # with open("config.json", "r") as f:
         #     self.config = load(f).get("motors", [1, 1, 1, 1])
         self.config = [1, 1, 1, 1]
+
+    def _legacyMove(self, deg:int, speed:int=100) -> None:
+        deg += 45
+        rad = radians(deg)
+        sinMult = sin(rad)
+        cosMult = cos(rad)
+        intensityMult = 1/max(abs(sinMult), abs(cosMult))
+        sinMult = sinMult*intensityMult
+        cosMult = cosMult*intensityMult
+
+        if sinMult > 1:
+            sinMult = 1
+        if cosMult > 1:
+            cosMult = 1
+        if sinMult < -1:
+            sinMult = -1
+        if cosMult < -1:
+            cosMult = -1
+
+        sinMult = round(sinMult, 4)
+        cosMult = round(cosMult, 4)
+
+        self.motorMoves[0].append(speed*-1*sinMult*self.config[0])
+        self.motorMoves[1].append(speed*-1*cosMult*self.config[1])
+        self.motorMoves[2].append(speed*sinMult*self.config[2])
+        self.motorMoves[3].append(speed*cosMult*self.config[3])
     
     def move(self, deg:int, yaw:int=0, speed:int=100) -> None:
         yaw = int(yaw/10)
