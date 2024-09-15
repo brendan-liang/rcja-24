@@ -12,29 +12,37 @@ sensors = Sensors()
 
 run = False
 
+mult = 1
+front = 60
+
 print("Ready to run!")
 sensors.resetCompass()
 while True:
     # = Toggle button =
     if interface.hasPressed(interface.BTN_ENTER):
-        run = not run
         sensors.resetCompass()
+        run = not run
     if run:
         # = Read Sensors = 
+        facing = sensors.readCompass()
         ball = sensors.readIR()
         ballStr = sensors.readIRStr() * 10
-        facing = sensors.readCompass()
+        print(facing)
+        if not ball:
+            drive._legacyMove((180 + facing) % 360)
+        else:
+            drive._legacyMove(ball % 360)
 
         # = Logic =
         #   ==> If no sight of ball
-        if not ball:
-            drive.move(180)
-        #   ==> If ball is forwards
-        elif within_angle(330, ball, 30):
-            drive.move(ball*2)
-        else:
-        #   ==> If ball is behind
-            drive.move(int(ball + copysign(ballStr, 180 - ball)*0.01))
+        # if not ball:
+        #     drive._legacyMove((180 + facing) % 360)
+        # #   ==> If ball is forwards
+        # elif within_angle((360 - front) % 360, (ball + facing) % 360, front):
+        #     drive._legacyMove(ball*mult)
+        # else:
+        # #   ==> If ball is behind
+        #     drive._legacyMove(int(ball + copysign(ballStr, 180 - ball)*0.01))
 
         # = Move motors =
         drive.tickMotors()

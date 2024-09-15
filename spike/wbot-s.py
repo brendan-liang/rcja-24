@@ -145,7 +145,7 @@ async def main():
             hubdisp.pointDirection(0)
         # elif 330 <= ir <= 360 or 0 < ir < 30:
         elif within_angle(330, ir, 30):
-            drive.move(ir*2)
+            drive.move(ir)
             hubdisp.pointDirection(ir)
         else:
             direction = int(ir + copysign(irStr, 180 - ir)*0.3)
