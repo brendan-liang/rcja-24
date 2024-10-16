@@ -1,13 +1,10 @@
-from hub import port, motion_sensor, light_matrix, button, light
-import color
+from hub import port, motion_sensor, light_matrix, button
 from app import display
 import color_sensor
 import distance_sensor
 import motor
 import runloop
 from math import sin, cos, radians, copysign
-
-import time
 
 import os
 import json
@@ -32,9 +29,12 @@ class FileSystem:
             json.dump(obj, f)
         return
 
-    def load(self, path) -> dict:
+    def load(self, path):
         with open(self.path + path, "a+") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except ValueError:
+                return {}
 
 class Sensors:
     def __init__(self, lenPrev:int = 6):
@@ -90,9 +90,6 @@ class Drivebase:
         for i in self.motors:
             motor.stop(i)
 
-    def clear(self) -> None:
-        self.motorMoves = [[], [], [], []]
-
     def move(self, deg:int, speed:float=1, yaw:int|None=None):
         self.dirs.append(deg)
 
@@ -117,25 +114,19 @@ class Drivebase:
         yaw = (motion_sensor.tilt_angles()[0]//10) if yaw == None else (yaw//10)
 
         yawAdjust = clamp(-1, (yaw/180)*mult, 1)
+        display.text(str(abs(yawAdjust)) + " " + str(yawThreshold))
         if abs(yawAdjust) >= yawThreshold:
             for i in range(4):
                 self.motorMoves[i].append(-yawAdjust*speed)
-            return True
-        return False
 
-    def tickMotors(self, speed=1100, disabled=False, inverted:bool=False):
-        if inverted:
-            self.motorMoves = [[-1 * move for move in motor] for motor in self.motorMoves]
-        
-        multiplier = 1
-        if len(self.motorMoves[0]) > 1:
-            multiplier = speed // max([sum(i)//len(i) for i in self.motorMoves])
-        
+    def tickMotors(self, speed=1100, disabled=False):
         if not disabled:
             motorMoves = []
             for i in self.motorMoves:
                 if len(i):
                     motorMoves.append(sum(i)//len(i))
+            #multiplier = speed/max(motorMoves) if len(motorMoves) else 1
+            multiplier = 1
 
             for i in range(4):
                 if not len(self.motorMoves[i]):
@@ -147,7 +138,6 @@ class Drivebase:
                     motor.run(self.motors[i], int(moveDir))
                 else:
                     motor.stop(self.motors[i])
-
 
         self.motorMoves = [[], [], [], []]
         self.dirs = []
@@ -179,99 +169,30 @@ class HubDisplay: # May add to?
     def showChar(self, char: str):
         light_matrix.write(char[0])
 
-CENTRE_RADIUS = 20
+CENTRE_RADIUS = 50
 
 async def main():
-    motion_sensor.reset_yaw(0)
-    drive = Drivebase()
-    sensors = Sensors()
-    hubdisp = HubDisplay()
+    # modules
     fs = FileSystem()
 
-    centre = sensors.getUS()
+    # settings
+    settings:dict = fs.load("setup.json")
+    print("Loaded settings:\n" + "\n".join([str(key) + ": " + str(settings.get(key, "null")) for key in settings.keys()]))
+    inverted = settings.get("inverted") or False
 
-    settings = fs.load("setup.json")
-    print(settings)
+    def save():
+        fs.dump("setup.json", {
+            "inverted": inverted
+        })
+        print("Saved settings!")
 
-    lastPossFail = time.ticks_ms()
-    possession = False
-
+    # logic
     while 1:
-        lastIR = 180
-        ir, irStr = sensors.getIR()
-        us = sensors.getUS()
+        if button.pressed(button.LEFT):
+            while button.pressed(button.LEFT):
+                pass
+            inverted = not inverted
+            save()
 
-        movementTexts = []
-
-        if ir:
-            lastIR = ir
-
-        # possession
-        possessionConditions = (irStr > 70) and (within_angle(330, ir, 30))
-
-        if not possessionConditions:
-            lastPossFail = time.ticks_ms()
-        if time.ticks_diff(time.ticks_ms(), lastPossFail) > 200 and possessionConditions:
-            possession = True
-            light.color(light.POWER, color.AZURE)
-        else:
-            possession = False
-            light.color(light.POWER, color.RED)
-
-        movementTexts.append(str(possession))
-        movementTexts.append(str(irStr))
-
-        # add ball movements
-
-        if not ir:
-            movementTexts.append("NOBALL")
-            drive.move(lastIR)
-            # add ultrasonic movements
-            if us > centre + CENTRE_RADIUS:
-                drive.move(90)
-            elif us < centre - CENTRE_RADIUS:
-                drive.move(-90)
-        # elif 330 <= ir <= 360 or 0 < ir < 30:
-        elif within_angle(330, ir, 30):
-            movementTexts.append("BALLFRONT")
-            drive.move(ir)
-        else:
-            # Move around the ball
-            movementTexts.append("BALLBACK")
-            
-            sign = copysign(1, 180 - ir)
-            direction = int(ir + irStr*sign*0.7)
-            drive.move(direction)
-
-        # goal maneuver
-        if possession:
-            possessionTime = time.ticks_diff(time.ticks_ms(), lastPossFail)
-            drive.clear()
-            drive.move(0)
-            if us > centre + CENTRE_RADIUS:
-                drive.move(45)
-            elif us < centre - CENTRE_RADIUS:
-                drive.move(-45)
-                
-
-        # yaw adjustment
-
-        if drive.yawAdjust():
-            movementTexts.append("YAWADJUST")
-        #display.text(str(int(copysign(90, us - centre))) + " " + str(us) + " " + str(centre))
-        #drive.move(int(copysign(90, us - centre)), speed=clamp(-0.3, (us - centre)/100, 0.3))
-
-        # apply movements
-
-        direction = (sum(drive.dirs)//len(drive.dirs)) if len(drive.dirs) else 0
-        hubdisp.pointDirection(direction)
-        drive.tickMotors(inverted=settings.get("inverted", False))
-
-        # output text
-
-        outputText = ""
-        for text in movementTexts:
-            outputText += text + " "
-        display.text(outputText)
-
+        display.text("Inverted:" + str(inverted))
 runloop.run(main())

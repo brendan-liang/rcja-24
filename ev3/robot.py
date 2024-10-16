@@ -23,7 +23,7 @@ def within_angle(start:int|float, angle:int|float, end:int|float) -> bool: # Onl
     end = end or 360
     if start < end:
         return start <= angle <= end
-    else:
+    else:   
         return not (end < angle < start)
     
 def clamp(low:int|float, n:int|float, high:int|float) -> int|float:
