@@ -83,7 +83,6 @@ class Drivebase:
         self.bL = port.F
         self.motors = [self.fL, self.fR, self.bR, self.bL]
         self.motorMoves = [[], [], [], []]
-        self.dirs = []
         return
 
     def stop(self) -> None:
@@ -94,8 +93,6 @@ class Drivebase:
         self.motorMoves = [[], [], [], []]
 
     def move(self, deg:int, speed:float=1, yaw:int|None=None):
-        self.dirs.append(deg)
-
         speed *= 1100
         deg += 45
 
@@ -172,7 +169,7 @@ class HubDisplay: # May add to?
     def pointDirection(self, dir: int):
         clockDir = dir // 30
         if dir:
-            light_matrix.show_image(eval("light_matrix.IMAGE_CLOCK" + str(clockDir)))
+            light_matrix.show_image(eval("light_matrix.IMAGE_CLOCK" + str(clockDir or 12)))
         else:
             light_matrix.show_image(light_matrix.IMAGE_SQUARE_SMALL)
 
@@ -196,6 +193,9 @@ async def main():
     lastPossFail = time.ticks_ms()
     possession = False
 
+    lastUnderFail = time.ticks_ms()
+    undershoot = False
+
     while 1:
         lastIR = 180
         ir, irStr = sensors.getIR()
@@ -206,12 +206,25 @@ async def main():
         if ir:
             lastIR = ir
 
-        # possession
-        possessionConditions = (irStr > 70) and (within_angle(330, ir, 30))
+        # undershoot detection
+        undershootConditions = (within_angle(290, ir, 340) or within_angle(20, ir, 70))
+
+        if not undershootConditions:
+            lastUnderFail = time.ticks_ms()
+        if time.ticks_diff(time.ticks_ms(), lastPossFail) > 250 and undershootConditions:
+            undershoot = True
+            light.color(light.CONNECT, color.AZURE)
+        else:
+            undershoot = False
+            light.color(light.CONNECT, color.RED)
+
+        # possession detection
+        possessionConditions = (irStr > 75) and (within_angle(330, ir, 30))
 
         if not possessionConditions:
             lastPossFail = time.ticks_ms()
-        if time.ticks_diff(time.ticks_ms(), lastPossFail) > 200 and possessionConditions:
+        if time.ticks_diff(time.ticks_ms(), lastPossFail) > 500 and possessionConditions:
+        # if True:
             possession = True
             light.color(light.POWER, color.AZURE)
         else:
@@ -220,6 +233,7 @@ async def main():
 
         movementTexts.append(str(possession))
         movementTexts.append(str(irStr))
+        movementTexts.append(str(ir))
 
         # add ball movements
 
@@ -234,25 +248,33 @@ async def main():
         # elif 330 <= ir <= 360 or 0 < ir < 30:
         elif within_angle(330, ir, 30):
             movementTexts.append("BALLFRONT")
-            drive.move(ir)
+            # avoid undershooting
+            if undershoot:
+                drive.move(ir * 2)
+            else:
+                drive.move(ir)
         else:
             # Move around the ball
             movementTexts.append("BALLBACK")
             
             sign = copysign(1, 180 - ir)
-            direction = int(ir + irStr*sign*0.7)
+            direction = int(ir + irStr*sign*(settings.get("strafespd") or 0.7))
             drive.move(direction)
 
         # goal maneuver
         if possession:
             possessionTime = time.ticks_diff(time.ticks_ms(), lastPossFail)
             drive.clear()
-            drive.move(0)
+            drive.move(360)
             if us > centre + CENTRE_RADIUS:
                 drive.move(45)
             elif us < centre - CENTRE_RADIUS:
                 drive.move(-45)
                 
+        # avoid undershooting
+        if undershoot:
+            drive.clear()
+            drive.move(ir*2)
 
         # yaw adjustment
 
@@ -263,8 +285,7 @@ async def main():
 
         # apply movements
 
-        direction = (sum(drive.dirs)//len(drive.dirs)) if len(drive.dirs) else 0
-        hubdisp.pointDirection(direction)
+        hubdisp.pointDirection(ir)
         drive.tickMotors(inverted=settings.get("inverted", False))
 
         # output text

@@ -178,11 +178,15 @@ async def main():
     # settings
     settings:dict = fs.load("setup.json")
     print("Loaded settings:\n" + "\n".join([str(key) + ": " + str(settings.get(key, "null")) for key in settings.keys()]))
+
     inverted = settings.get("inverted") or False
+    strafespd = settings.get("strafespd") or 0
+
 
     def save():
         fs.dump("setup.json", {
-            "inverted": inverted
+            "inverted": inverted,
+            "strafespd": strafespd,
         })
         print("Saved settings!")
 
@@ -194,5 +198,12 @@ async def main():
             inverted = not inverted
             save()
 
-        display.text("Inverted:" + str(inverted))
+        if button.pressed(button.RIGHT):
+            while button.pressed(button.RIGHT):
+                pass
+            strafespd = round(strafespd + 0.1, 2) % 1.1
+            save()
+
+        display.text("Inverted:" + str(inverted) + " Strafespd:" + str(strafespd))
+            
 runloop.run(main())
