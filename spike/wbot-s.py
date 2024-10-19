@@ -196,103 +196,115 @@ async def main():
     lastUnderFail = time.ticks_ms()
     undershoot = False
 
+    running = False
+
     while 1:
-        lastIR = 180
-        ir, irStr = sensors.getIR()
-        us = sensors.getUS()
+        if button.pressed(button.LEFT):
+            while button.pressed(button.LEFT):
+                pass
+            running = not running
+        if button.pressed(button.RIGHT):
+            while button.pressed(button.RIGHT):
+                pass
+            running = not running
+        
+        if running:        
+            lastIR = 180
+            ir, irStr = sensors.getIR()
+            us = sensors.getUS()
 
-        movementTexts = []
+            movementTexts = []
 
-        if ir:
-            lastIR = ir
+            if ir:
+                lastIR = ir
 
-        # undershoot detection
-        undershootConditions = (within_angle(290, ir, 340) or within_angle(20, ir, 70))
+            # undershoot detection
+            undershootConditions = (within_angle(290, ir, 340) or within_angle(20, ir, 70))
 
-        if not undershootConditions:
-            lastUnderFail = time.ticks_ms()
-        if time.ticks_diff(time.ticks_ms(), lastPossFail) > 250 and undershootConditions:
-            undershoot = True
-            light.color(light.CONNECT, color.AZURE)
-        else:
-            undershoot = False
-            light.color(light.CONNECT, color.RED)
+            if not undershootConditions:
+                lastUnderFail = time.ticks_ms()
+            if time.ticks_diff(time.ticks_ms(), lastPossFail) > 250 and undershootConditions:
+                undershoot = True
+                light.color(light.CONNECT, color.AZURE)
+            else:
+                undershoot = False
+                light.color(light.CONNECT, color.RED)
 
-        # possession detection
-        possessionConditions = (irStr > 75) and (within_angle(330, ir, 30))
+            # possession detection
+            possessionConditions = (irStr > 75) and (within_angle(330, ir, 30))
 
-        if not possessionConditions:
-            lastPossFail = time.ticks_ms()
-        if time.ticks_diff(time.ticks_ms(), lastPossFail) > 500 and possessionConditions:
-        # if True:
-            possession = True
-            light.color(light.POWER, color.AZURE)
-        else:
-            possession = False
-            light.color(light.POWER, color.RED)
+            if not possessionConditions:
+                lastPossFail = time.ticks_ms()
+            if time.ticks_diff(time.ticks_ms(), lastPossFail) > 500 and possessionConditions:
+            # if True:
+                possession = True
+                light.color(light.POWER, color.AZURE)
+            else:
+                possession = False
+                light.color(light.POWER, color.RED)
 
-        movementTexts.append(str(possession))
-        movementTexts.append(str(irStr))
-        movementTexts.append(str(ir))
+            movementTexts.append(str(possession))
+            movementTexts.append(str(irStr))
+            movementTexts.append(str(ir))
 
-        # add ball movements
+            # add ball movements
 
-        if not ir:
-            movementTexts.append("NOBALL")
-            drive.move(lastIR)
-            # add ultrasonic movements
-            if us > centre + CENTRE_RADIUS:
-                drive.move(90)
-            elif us < centre - CENTRE_RADIUS:
-                drive.move(-90)
-        # elif 330 <= ir <= 360 or 0 < ir < 30:
-        elif within_angle(330, ir, 30):
-            movementTexts.append("BALLFRONT")
+            if not ir:
+                movementTexts.append("NOBALL")
+                drive.move(lastIR)
+                # add ultrasonic movements
+                if us > centre + CENTRE_RADIUS:
+                    drive.move(90)
+                elif us < centre - CENTRE_RADIUS:
+                    drive.move(-90)
+            # elif 330 <= ir <= 360 or 0 < ir < 30:
+            elif within_angle(330, ir, 30):
+                movementTexts.append("BALLFRONT")
+                # avoid undershooting
+                if undershoot:
+                    drive.move(ir * 2)
+                else:
+                    drive.move(ir)
+            else:
+                # Move around the ball
+                movementTexts.append("BALLBACK")
+                
+                sign = copysign(1, 180 - ir)
+                direction = int(ir + irStr*sign*(settings.get("strafespd") or 0.7))
+                drive.move(direction)
+
+            # goal maneuver
+            if possession:
+                possessionTime = time.ticks_diff(time.ticks_ms(), lastPossFail)
+                drive.clear()
+                drive.move(360)
+                if us > centre + CENTRE_RADIUS:
+                    drive.move(45)
+                elif us < centre - CENTRE_RADIUS:
+                    drive.move(-45)
+                    
             # avoid undershooting
             if undershoot:
-                drive.move(ir * 2)
-            else:
-                drive.move(ir)
-        else:
-            # Move around the ball
-            movementTexts.append("BALLBACK")
-            
-            sign = copysign(1, 180 - ir)
-            direction = int(ir + irStr*sign*(settings.get("strafespd") or 0.7))
-            drive.move(direction)
+                drive.clear()
+                drive.move(ir*2)
 
-        # goal maneuver
-        if possession:
-            possessionTime = time.ticks_diff(time.ticks_ms(), lastPossFail)
-            drive.clear()
-            drive.move(360)
-            if us > centre + CENTRE_RADIUS:
-                drive.move(45)
-            elif us < centre - CENTRE_RADIUS:
-                drive.move(-45)
-                
-        # avoid undershooting
-        if undershoot:
-            drive.clear()
-            drive.move(ir*2)
+            # yaw adjustment
 
-        # yaw adjustment
+            if drive.yawAdjust():
+                movementTexts.append("YAWADJUST")
+            #display.text(str(int(copysign(90, us - centre))) + " " + str(us) + " " + str(centre))
+            #drive.move(int(copysign(90, us - centre)), speed=clamp(-0.3, (us - centre)/100, 0.3))
 
-        if drive.yawAdjust():
-            movementTexts.append("YAWADJUST")
-        #display.text(str(int(copysign(90, us - centre))) + " " + str(us) + " " + str(centre))
-        #drive.move(int(copysign(90, us - centre)), speed=clamp(-0.3, (us - centre)/100, 0.3))
+            # apply movements
 
-        # apply movements
+            hubdisp.pointDirection(ir)
+            drive.tickMotors(inverted=settings.get("inverted", False))
 
-        hubdisp.pointDirection(ir)
-        drive.tickMotors(inverted=settings.get("inverted", False))
+            # output text
 
-        # output text
-
-        outputText = ""
-        for text in movementTexts:
-            outputText += text + " "
-        display.text(outputText)
+            outputText = ""
+            for text in movementTexts:
+                outputText += text + " "
+            display.text(outputText)
 
 runloop.run(main())
